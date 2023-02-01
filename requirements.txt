@@ -5,7 +5,7 @@ httpx[http2]==0.22.0
 urllib3==1.26.8
 pyyaml==6.0
 aiohttp==3.8.1
-BeautifulSoup4==4.10.0
+BeautifulSoup4==4.11.2
 git+https://github.com/ruizlenato/dicioinformal
 gpytranslate==1.4.0
 tortoise-orm==0.18.1
