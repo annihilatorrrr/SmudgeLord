@@ -84,37 +84,35 @@ class DownloadMedia:
         return self.files, self.caption
 
     async def instagram(self, url: str, id: str):
-        instalink = f"<a href='{url}'>🔗 Link</a>"
-        url = re.sub(
-            r"(?:www.|m.)?instagram.com/(?:reel|p)(.*)/", r"imginn.com/p\1/", url
-        )
-        headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:108.0) Gecko/20100101 Firefox/108.0",
-            "Accept": "application/json",
-        }
-        res = await http.get(f"{self.cors}{url}", headers=headers)
-
-        if res.status_code != 200:
-            url = re.sub(r"imginn.com", r"imginn.org", url)
-            res = await http.get(f"{url}")
-
+        res = await http.get(f"{self.cors}{url}")
         soup = BeautifulSoup(res.text, "html.parser")
-        self.caption = f"{soup.find('meta', property='og:description')['content']}\n{instalink}"  # TODO: add option to disable the captions.
+        data = json.loads(soup.find("script", type="application/ld+json").text)
+
+        self.caption = f"{data['articleBody']}\n<a href='{url}'>🔗 Link</a>"  # TODO: add option to disable the captions.
+
         with contextlib.suppress(FileExistsError):
             os.mkdir(f"./downloads/{id}/")
-        if swiper := soup.find_all("div", "swiper-slide"):
-            for i in swiper:
-                urlmedia = re.sub(r".*url=", r"", unquote(i["data-src"]))
-                path = f"./downloads/{id}/{urlmedia[90:120]}.{'mp4' if re.search(r'.mp4', urlmedia, re.M) else 'jpg'}"
-                with open(path, "wb") as f:
-                    f.write((await http.get(f"{self.cors}{urlmedia}")).content)
-                self.files.append({"path": path, "width": 0, "height": 0})
-        else:
-            media = f"{self.cors}{soup.find('a', string='Download', href=True)['href']}"
-            path = f"./downloads/{id}/{media[90:120]}.{'mp4' if re.search(r'.mp4', media, re.M) else 'jpg'}"
+
+        for media in data["image"]:
+            self.files.append(
+                {
+                    "path": media["url"],
+                    "width": media["width"],
+                    "height": media["height"],
+                }
+            )
+
+        for media in data["video"]:
+            path = f"./downloads/{id}/{media['contentUrl'][90:120]}.mp4"
             with open(path, "wb") as f:
-                f.write((await http.get(media)).content)
-            self.files.append({"path": path, "width": 0, "height": 0})
+                f.write((await http.get(media["contentUrl"])).content)
+            self.files.append(
+                {
+                    "path": path,
+                    "width": int(media["width"]),
+                    "height": int(media["height"]),
+                }
+            )
         return
 
     async def Twitter(self, url: str, id: str):
