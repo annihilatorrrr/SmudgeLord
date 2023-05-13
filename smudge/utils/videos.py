@@ -2,23 +2,12 @@ import re
 import os
 import json
 import contextlib
-import gallery_dl
 
 from yt_dlp import YoutubeDL
-from bs4 import BeautifulSoup
 from urllib.parse import unquote
 
 from ..utils import aiowrap, http
 from ..config import BARRER_TOKEN
-
-
-@aiowrap
-def gallery_down(path, url: str):
-    gallery_dl.config.set(("output",), "mode", "null")
-    gallery_dl.config.set((), "directory", [])
-    gallery_dl.config.set((), "base-directory", [path])
-    gallery_dl.config.load()
-    return gallery_dl.job.DownloadJob(url).run()
 
 
 @aiowrap
@@ -84,36 +73,39 @@ class DownloadMedia:
         return self.files, self.caption
 
     async def instagram(self, url: str, id: str):
-        res = await http.get(f"{self.cors}{url}")
-        soup = BeautifulSoup(res.text, "html.parser")
-        data = json.loads(soup.find("script", type="application/ld+json").text)
-
-        self.caption = f"{data['articleBody']}\n<a href='{url}'>🔗 Link</a>"  # TODO: add option to disable the captions.
-
+        res = await http.post(
+            "https://igram.world/api/convert", data={"url": url}, timeout=30.0
+        )
+        data = json.loads(res.content)
         with contextlib.suppress(FileExistsError):
             os.mkdir(f"./downloads/{id}/")
 
-        for media in data["image"]:
-            self.files.append(
-                {
-                    "path": media["url"],
-                    "width": media["width"],
-                    "height": media["height"],
-                }
-            )
-
-        for media in data["video"]:
-            path = f"./downloads/{id}/{media['contentUrl'][90:120]}.mp4"
-            with open(path, "wb") as f:
-                f.write((await http.get(media["contentUrl"])).content)
-            self.files.append(
-                {
-                    "path": path,
-                    "width": int(media["width"]),
-                    "height": int(media["height"]),
-                }
-            )
-        return
+        if data:
+            self.caption = f"\n<a href='{url}'>🔗 Link</a>"  # TODO: add option to disable the captions.
+            try:
+                media = unquote(data["url"][0]["url"])
+                if data["url"][0]["type"] == "mp4":
+                    media = re.sub(
+                        r".*(htt.+?//)(s.+?.c)(.+?)(&file.*)", r"\1scontent.c\3", media
+                    )
+                    with open(f"./downloads/{id}/{media[60:80]}.mp4", "wb") as f:
+                        f.write((await http.get(media)).content)
+                    media = f"./downloads/{id}/{media[60:80]}.mp4"
+                self.files.append({"path": media, "width": 0, "height": 0})
+            except TypeError:
+                for media in data:
+                    url = unquote(media["url"][0]["url"])
+                    if media["url"][0]["type"] == "mp4":
+                        url = re.sub(
+                            r".*(htt.+?//)(s.+?.c)(.+?)(&file.*)",
+                            r"\1scontent.c\3",
+                            url,
+                        )
+                        with open(f"./downloads/{id}/{url[60:80]}.mp4", "wb") as f:
+                            f.write((await http.get(url)).content)
+                        url = f"./downloads/{id}/{url[60:80]}.mp4"
+                    self.files.append({"path": url, "width": 0, "height": 0})
+            return
 
     async def Twitter(self, url: str, id: str):
         # Extract the tweet ID from the URL
