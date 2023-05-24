@@ -73,38 +73,25 @@ class DownloadMedia:
         return self.files, self.caption
 
     async def instagram(self, url: str, id: str):
-        res = await http.post(
-            "https://igram.world/api/convert", data={"url": url}, timeout=30.0
-        )
-        data = json.loads(res.content)
-        with contextlib.suppress(FileExistsError):
-            os.mkdir(f"./downloads/{id}/")
+        res = await http.post("https://igram.world/api/convert", data={"url": url})
+        data = res.json()
+
+        self.caption = f"\n<a href='{url}'>🔗 Link</a>"
 
         if data:
-            self.caption = f"\n<a href='{url}'>🔗 Link</a>"  # TODO: add option to disable the captions.
-            try:
-                media = unquote(data["url"][0]["url"])
-                if data["url"][0]["type"] == "mp4":
-                    media = re.sub(
-                        r".*(htt.+?//)(s.+?.c)(.+?)(&file.*)", r"\1scontent.c\3", media
-                    )
-                    with open(f"./downloads/{id}/{media[60:80]}.mp4", "wb") as f:
-                        f.write((await http.get(media)).content)
-                    media = f"./downloads/{id}/{media[60:80]}.mp4"
-                self.files.append({"path": media, "width": 0, "height": 0})
-            except TypeError:
-                for media in data:
-                    url = unquote(media["url"][0]["url"])
-                    if media["url"][0]["type"] == "mp4":
-                        url = re.sub(
-                            r".*(htt.+?//)(s.+?.c)(.+?)(&file.*)",
-                            r"\1scontent.c\3",
-                            url,
-                        )
-                        with open(f"./downloads/{id}/{url[60:80]}.mp4", "wb") as f:
-                            f.write((await http.get(url)).content)
-                        url = f"./downloads/{id}/{url[60:80]}.mp4"
-                    self.files.append({"path": url, "width": 0, "height": 0})
+            data = [data] if isinstance(data, dict) else data
+
+            for media in data:
+                url = re.sub(
+                    r".*(htt.+?//)(:?ins.+?.fna.f.+?net|s.+?.com)?(.+?)(&file.*)",
+                    r"\1scontent.cdninstagram.com\3",
+                    unquote(media["url"][0]["url"]),
+                )
+                ext = media["url"][0]["ext"]
+                with open(f"./downloads/{url[60:80]}.{ext}", "wb") as f:
+                    f.write((await http.get(url)).content)
+                path = f"./downloads/{url[60:80]}.{ext}"
+                self.files.append({"path": path, "width": 0, "height": 0})
             return
 
     async def Twitter(self, url: str, id: str):
