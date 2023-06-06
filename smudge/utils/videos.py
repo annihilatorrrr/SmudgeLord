@@ -1,10 +1,11 @@
 import re
 import os
 import json
+import esprima
 import contextlib
 
+from bs4 import BeautifulSoup as bs
 from yt_dlp import YoutubeDL
-from urllib.parse import unquote
 
 from ..utils import aiowrap, http
 from ..config import BARRER_TOKEN
@@ -72,27 +73,81 @@ class DownloadMedia:
             await self.Twitter(url, id)
         return self.files, self.caption
 
-    async def instagram(self, url: str, id: str):
-        res = await http.post("https://igram.world/api/convert", data={"url": url})
-        data = res.json()
+    async def instagram(self, url: str, captions: str):
+        post_id = re.findall(r"/(?:reel|p)/([a-zA-Z0-9_-]+)/", url)[0]
+        r = await http.get(
+            f"https://www.instagram.com/p/{post_id}/embed/captioned",
+            follow_redirects=True,
+        )
+        soup = bs(r.text, "html.parser")
+        medias = []
 
-        self.caption = f"\n<a href='{url}'>🔗 Link</a>"
+        if soup.find("div", {"data-media-type": "GraphImage"}):
+            caption = re.sub(
+                r'.*</a><br/><br/>(.*)(<div class="CaptionComments">.*)',
+                r"\1",
+                str(soup.find("div", {"class": "Caption"})),
+            ).replace("<br/>", "\n")
+            self.caption = f"{caption}\n<a href='{url}'>🔗 Link</a>"
+            file = soup.find("img", {"class": "EmbeddedMediaImage"}).get("src")
+            with open(f"./downloads/{file[60:80]}.jpg", "wb") as f:
+                f.write((await http.get(file)).content)
+            path = f"./downloads/{file['p'][60:80]}.jpg"
+            medias.append({"e": "jpg", "p": path, "w": 0, "h": 0})
 
-        if data:
-            data = [data] if isinstance(data, dict) else data
+        data = re.findall(
+            r'<script>(requireLazy\(\["TimeSliceImpl".*)<\/script>', r.text
+        )
 
-            for media in data:
-                url = re.sub(
-                    r".*(htt.+?//)(:?ins.+?.fna.f.+?net|s.+?.com)?(.+?)(&file.*)",
-                    r"\1scontent.cdninstagram.com\3",
-                    unquote(media["url"][0]["url"]),
-                )
-                ext = media["url"][0]["ext"]
-                with open(f"./downloads/{url[60:80]}.{ext}", "wb") as f:
-                    f.write((await http.get(url)).content)
-                path = f"./downloads/{url[60:80]}.{ext}"
-                self.files.append({"path": path, "width": 0, "height": 0})
-            return
+        if data and "shortcode_media" in data[0]:
+            tokenized = esprima.tokenize(data[0])
+            for token in tokenized:
+                if "shortcode_media" in token.value:
+                    jsoninsta = json.loads(json.loads(token.value))["gql_data"][
+                        "shortcode_media"
+                    ]
+
+                    if caption := jsoninsta["edge_media_to_caption"]["edges"]:
+                        self.caption = (
+                            f"{caption[0]['node']['text']}\n<a href='{url}'>🔗 Link</a>"
+                        )
+                    else:
+                        self.caption = f"\n<a href='{url}'>🔗 Link</a>"
+
+                    if jsoninsta["__typename"] == "GraphVideo":
+                        url = jsoninsta["video_url"]
+                        dimensions = jsoninsta["dimensions"]
+                        medias.append(
+                            {
+                                "e": "mp4",
+                                "p": url,
+                                "w": dimensions["width"],
+                                "h": dimensions["height"],
+                            }
+                        )
+                    else:
+                        for post in jsoninsta["edge_sidecar_to_children"]["edges"]:
+                            url = post["node"]["display_url"]
+                            ext = "jpg"
+                            if post["node"]["is_video"] is True:
+                                url = post["node"]["video_url"]
+                                ext = "mp4"
+                            dimensions = post["node"]["dimensions"]
+                            medias.append(
+                                {
+                                    "e": ext,
+                                    "p": url,
+                                    "w": dimensions["width"],
+                                    "h": dimensions["height"],
+                                }
+                            )
+
+        for m in medias:
+            with open(f"./downloads/{m['p'][60:80]}.{m['e']}", "wb") as f:
+                f.write((await http.get(m["p"])).content)
+            path = f"./downloads/{m['p'][60:80]}.{m['e']}"
+            self.files.append({"p": path, "w": m["w"], "h": m["h"]})
+        return
 
     async def Twitter(self, url: str, id: str):
         # Extract the tweet ID from the URL
@@ -128,9 +183,7 @@ class DownloadMedia:
                             f.write((await http.get(a["url"])).content)
             else:
                 path = media["url"]
-            self.files.append(
-                {"path": path, "width": media["width"], "height": media["height"]}
-            )
+            self.files.append({"p": path, "w": media["width"], "h": media["height"]})
 
         return
 
@@ -141,9 +194,9 @@ class DownloadMedia:
         yt = await extract_info(ydl, url, download=True)
         self.files.append(
             {
-                "path": f"./downloads/{id}/{x[2]}.mp4",
-                "width": yt["formats"][0]["width"],
-                "height": yt["formats"][0]["height"],
+                "p": f"./downloads/{id}/{x[2]}.mp4",
+                "w": yt["formats"][0]["width"],
+                "h": yt["formats"][0]["height"],
             }
         )
         return

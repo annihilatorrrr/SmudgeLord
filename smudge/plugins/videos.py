@@ -249,36 +249,34 @@ async def sdl(c: Smudge, m: Message):
 
     medias = []
     for media in files:
-        if media["path"][-3:] == "mp4" and len(files) == 1:
+        if media["p"][-3:] == "mp4" and len(files) == 1:
             await c.send_chat_action(m.chat.id, ChatAction.UPLOAD_VIDEO)
             await m.reply_video(
-                video=media["path"],
-                width=media["width"],
-                height=media["height"],
+                video=media["p"],
+                width=media["w"],
+                height=media["h"],
                 caption=caption,
             )
             return shutil.rmtree(f"./downloads/{path}/", ignore_errors=True)
 
-        if media["path"][-3:] == "mp4":
+        if media["p"][-3:] == "mp4":
             if medias:
                 medias.append(
-                    InputMediaVideo(
-                        media["path"], width=media["width"], height=media["height"]
-                    )
+                    InputMediaVideo(media["p"], width=media["w"], height=media["h"])
                 )
             else:
                 medias.append(
                     InputMediaVideo(
-                        media["path"],
-                        width=media["width"],
-                        height=media["height"],
+                        media["p"],
+                        width=media["w"],
+                        height=media["h"],
                         caption=caption,
                     )
                 )
         elif not medias:
-            medias.append(InputMediaPhoto(media["path"], caption=caption))
+            medias.append(InputMediaPhoto(media["p"], caption=caption))
         else:
-            medias.append(InputMediaPhoto(media["path"]))
+            medias.append(InputMediaPhoto(media["p"]))
 
     if medias:
         if (
