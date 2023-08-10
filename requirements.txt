@@ -1,5 +1,5 @@
 git+https://github.com/AmanoTeam/Pyrogram
-tgcrypto==1.2.3
+tgcrypto==1.2.5
 rich==11.2.0
 httpx[http2]==0.22.0
 urllib3==1.26.8
